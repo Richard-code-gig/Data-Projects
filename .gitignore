@@ -1,0 +1,8 @@
+.env
+py_venv
+logs/*
+minio
+dags/__pycache__
+postgres_test.py
+use.py
+dependency.py
