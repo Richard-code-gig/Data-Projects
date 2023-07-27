@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-ROOTNAME}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-CHANGEME123}
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    # will still change to a volume mount here
+    volumes:
+      - ./minio/data:/data
+    networks:
+      networkBridge:
+        aliases:
+          - minio_ntw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    restart: always
+    command: server /data --console-address ":9090"
+
+networks:
+  networkBridge:
+    name: custom_network
+  
