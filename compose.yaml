@@ -28,7 +28,8 @@ x-airflow-common:
   # build:
   #   context: ./
   #   dockerfile: Dockerfile
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.6.3}
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.6.3}
+  image: ${AIRFLOW_IMAGE_NAME:-extend_airflow:latest}
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -90,6 +91,24 @@ services:
       start_period: 5s
     restart: always
 
+  loader:
+    image: extend_airflow:latest
+    container_name: loader
+    volumes:
+      - ./minio/data:/data
+    networks:
+      networkBridge:
+        aliases:
+          - loader_ntw
+    depends_on:
+      - minio
+    command:
+      - wget
+      - O 
+      - "data/survey_bucket/$data_(date + '%Y%m%d%H%M%S').zip" 
+      - "https://info.stackoverflowsolutions.com/rs/719-EMH-566/images/stack-overflow-developer-survey-2022.zip"
+      - "echo $data_(date + '%Y%m%d%H%M%S').zip"
+      
   airflow-webserver:
     <<: *airflow-common
     command: webserver
