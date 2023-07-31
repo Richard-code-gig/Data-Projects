@@ -7,7 +7,7 @@ Follow the instruction at `https://airflow.apache.org/docs/apache-airflow/2.0.1/
 
 Ensure you have Docker application running.
 
-Create a project directory and clone this repository postgres_data_lake branch.
+Create a project directory and clone this repository main branch. There maybe untested changes in the postgres_data_lake branch.
 
 Set the following env variables in a .env file in the project root folder:
 `AIRFLOW_UID
