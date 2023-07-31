@@ -1,38 +1,11 @@
-# Basic Airflow cluster configuration for CeleryExecutor with Redis and PostgreSQL.
-#
-# The following variables are supported:
-#
-# AIRFLOW_IMAGE_NAME           - Docker image name used to run Airflow.
-#                                Default: apache/airflow:2.6.3
-# AIRFLOW_UID                  - User ID in Airflow containers
-#                                Default: 50000
-# AIRFLOW_PROJ_DIR             - Base path to which all the files will be volumed.
-#                                Default: .
-# Default configurations
-# 
-# _AIRFLOW_WWW_USER_USERNAME   - Username for the administrator account (if requested).
-#                                Default: airflow
-# _AIRFLOW_WWW_USER_PASSWORD   - Password for the administrator account (if requested).
-#                                Default: airflow
-# _PIP_ADDITIONAL_REQUIREMENTS - Additional PIP requirements to add when starting all containers.
-#                                Use this option ONLY for quick checks. Installing requirements at container
-#                                startup is done EVERY TIME the service is started.
-#                                A better way is to build a custom image or extend the official image
-#                                as described in https://airflow.apache.org/docs/docker-stack/build.html.
-#                                Default: ''
-#
-
 version: '3.8'
 x-airflow-common:
   &airflow-common
-  # build:
-  #   context: ./
-  #   dockerfile: Dockerfile
-  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.6.3}
-  image: ${AIRFLOW_IMAGE_NAME:-extend_airflow:latest}
+  image: ${AIRFLOW_IMAGE_NAME:-extended_airflow:latest}
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__TASK_CONCURRENCY: 4
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres:5432/${POSTGRES_DB:-airflow}
     # For backward compatibility, with Airflow <2.3
     AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres:5432/${POSTGRES_DB:-airflow}
@@ -42,24 +15,18 @@ x-airflow-common:
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     
     # Send logs to a remote location 
-    AIRFLOW__LOGGING__REMOTE_LOGGING: 'true'
-    AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: 's3://backendbucket/logs'
-    AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: 'aws_conn'
+    # AIRFLOW__LOGGING__REMOTE_LOGGING: 'true'
+    # AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: 's3://backendbucket/logs'
+    # AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: 'aws_conn'
 
-
-    # yamllint disable rule:line-length
-    # Use simple http server on scheduler for health checks
-    # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
-    # yamllint enable rule:line-length
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
-    # for other purpose (development, test and especially production usage) build/extend Airflow image.
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    - ./minio/data:/opt/airflow/data
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -85,30 +52,55 @@ services:
       test:
         - "CMD-SHELL"
         - 'pg_isready -h postgres -p 5432 -d ${POSTGRES_DB} -U ${POSTGRES_USER:-airflow}'
-      # test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
       retries: 5
       start_period: 5s
     restart: always
 
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-ROOTNAME}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-CHANGEME123}
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    # will still change to a volume mount here
+    volumes:
+      - ./minio/data:/data
+    networks:
+      networkBridge:
+        aliases:
+          - minio_ntw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    restart: always
+    command: server /data --console-address ":9090"
+
   loader:
-    image: extend_airflow:latest
+    image: alpine
     container_name: loader
     volumes:
       - ./minio/data:/data
+      # - airflow_data:/data
     networks:
       networkBridge:
         aliases:
           - loader_ntw
     depends_on:
       - minio
-    command:
-      - wget
-      - O 
-      - "data/survey_bucket/$data_(date + '%Y%m%d%H%M%S').zip" 
-      - "https://info.stackoverflowsolutions.com/rs/719-EMH-566/images/stack-overflow-developer-survey-2022.zip"
-      - "echo $data_(date + '%Y%m%d%H%M%S').zip"
-      
+    command: sh -c "mkdir -p /data/survey_bucket && \
+             wget -q -O /data/survey_bucket/data_$(date +'%Y%m%d%H%M%S').zip \
+             https://info.stackoverflowsolutions.com/rs/719-EMH-566/images/stack-overflow-developer-survey-2022.zip && \
+             if [ $? -eq 0 ]; then echo Data file downloaded and saved as data_$(date +'%Y%m%d%H%M%S').zip; \
+             else echo 'Download failed.'; fi && \
+             echo DATA_FILENAME=data_$(date +'%Y%m%d%H%M%S').zip > ./data/filename.txt"
+
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -250,6 +242,7 @@ services:
 
 volumes:
   postgres-db-volume:
+  # airflow_data:
 
 networks:
   networkBridge:

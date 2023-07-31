@@ -6,3 +6,6 @@ dags/__pycache__
 postgres_test.py
 use.py
 dependency.py
+stackoverflow.py
+dags/utils.py
+Dockerfile.spark
