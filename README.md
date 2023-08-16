@@ -61,3 +61,5 @@ On the DAG view trigger the `load_postgres_script_dag` to load the Stackoverflow
 Verify that the load is successful.
 
 We will be back to use this postgresql tables for our analysis.
+
+Note: The command in the loader service in the compose file should not be there. It is just to demonstrate some concepts of compose files to the students. That part will be extracted to a separate sh file and run using Airflow BashOperator.
